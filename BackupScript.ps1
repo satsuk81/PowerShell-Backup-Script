@@ -98,7 +98,20 @@ function Invoke-CrossPlatformCopy {
 
     if ($IsWindows) {
         # Build robocopy args
-        $roboArgs = @($Source, $Target, '/E', '/COPY:DAT', '/R:0', '/W:0', '/MT:8', '/NFL', '/V', '/TEE', "/LOG:$robolog")
+        $roboArgs = @(
+            $Source, 
+            $Target, 
+            '/E', 
+            '/PURGE'
+            '/COPY:DAT',
+            '/R:0',
+            '/W:0',
+            '/MT:8',
+            '/NFL',
+            '/V',
+            '/TEE',
+            "/LOG:$robolog"
+        )
         #$roboArgs = @($Source, $Target, '/E', '/COPY:DAT', '/R:0', '/W:0', '/MT:8', '/NFL', '/NDL', '/V', '/TEE', "/LOG:$robolog")
         if ($Excludes.Count -gt 0) {
             $roboArgs += '/XD'
@@ -106,7 +119,7 @@ function Invoke-CrossPlatformCopy {
         }
 
         Write-au2matorLog -Type INFO -Text ('Starting robocopy: {0} -> {1}' -f $Source, $Target)
-        Write-au2matorLog -Type DEBUG -Text ('robocopy ' + ($roboArgs -join ' '))
+        #Write-au2matorLog -Type DEBUG -Text ('robocopy ' + ($roboArgs -join ' '))
 
         Start-Process -FilePath 'robocopy.exe' -ArgumentList $roboArgs -Wait
         $rc = $LASTEXITCODE
@@ -189,7 +202,8 @@ if ($PreCheck) {
     try {
         #Create Backup Dir
         Write-au2matorLog -Type INFO -Text 'Create Backup Dirs'
-        $BackupDestination = Join-Path -Path $Destination -ChildPath ("$BackupName-" + (Get-Date -Format yyyy-MM-ddTHH.mm.ss))
+        #$BackupDestination = Join-Path -Path $Destination -ChildPath ("$BackupName-" + (Get-Date -Format yyyy-MM-ddTHH.mm.ss))
+        $BackupDestination = Join-Path -Path $Destination -ChildPath ("$BackupName-" + (Get-Date -Format yyyy-MM-dd))
         New-Item -Path $BackupDestination -ItemType Directory -Force | Out-Null
         Write-au2matorLog -Type INFO -Text "Create Backupdir $BackupDestination"
     }
@@ -235,7 +249,7 @@ if ($PreCheck) {
             Where-Object { -not $_.PSIsContainer }
             if (!$Files) {
                 Write-au2matorLog -Type WARNING -Text "$Backup has no valid files"
-                continue
+                #continue
             }
             $dirsToInclude = @()
             $dirsToInclude += $Backup
@@ -264,10 +278,11 @@ if ($PreCheck) {
             $BackupDirFiles.Add($Backup, $Files)
     
             $colItems = ($Files | Measure-Object -Property length -Sum)
+            $SumMB += $colItems.Sum
             $SumItems += $colItems.Count
         }
     
-        $TotalGB = ('{0:N2} GB of Files' -f (($colItems.Sum) / 1GB))
+        $TotalGB = ('{0:N2} GB of Files' -f ($SumMB / 1GB))
         Write-au2matorLog -Type INFO -Text "There are $SumItems Files with $TotalGB to copy"
         
         if ($BackupDirFiles.Count -le 0) {
@@ -304,12 +319,14 @@ if ($PreCheck) {
 
                 $result = Invoke-CrossPlatformCopy -Source $Backup -Target $target -Excludes $dirsToExclude -PerSourceLogPath $logPath
                 if (-not $result.Ok) {
-                    Write-au2matorLog -Type ERROR -Text ('Backup failed for {0} (code {1}). See {2}' -f $Backup, $result.ExitCode, $result.Log)
+                    Write-au2matorLog -Type ERROR -Text $("Backup failed for $Backup (code $($result.ExitCode))") 
+                    Write-au2matorLog -Type ERROR -Text $("Log: $($result.Log)")
                     $ErrorCount++
                     $BackUpCheck = $false
                 }
                 else {
-                    Write-au2matorLog -Type INFO -Text ('Backup succeeded for {0} (code {1}). Log: {2}' -f $Backup, $result.ExitCode, $result.Log)
+                    Write-au2matorLog -Type INFO -Text $("Backup succeeded for $Backup (code $($result.ExitCode))")
+                    Write-au2matorLog -Type INFO -Text $("Log: $($result.Log)")
                     $BackUpCheck = $true
                 }
             }
@@ -338,7 +355,6 @@ $Count = (Get-ChildItem $Destination | Where-Object { $_.PSIsContainer }).count
 if ($Count -gt $VersionKeepCount) {
     Write-au2matorLog -Type INFO -Text "Found $Count Backups"
     $Folder = Get-ChildItem $Destination | Where-Object { $_.PSIsContainer } | Sort-Object -Property CreationTime | Select-Object -First 1
-
     Write-au2matorLog -Type INFO -Text "Remove Dir: $Folder"
     Remove-Item -Path $Folder.FullName -Recurse -Force
 }

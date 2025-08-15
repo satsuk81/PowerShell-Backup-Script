@@ -23,7 +23,12 @@ Modified        : 2025-08-15
 ``` powershell
 $splat = @{
     BackupName       = 'Immich'
-    SourceDirs       = @('D:\immich-app\library\library')
+    SourceDirs       = @(
+        'D:\immich-app\library\backups',
+        'D:\immich-app\library\library',
+        'D:\immich-app\library\profile',
+        'D:\immich-app\library\upload'
+    )
     Destination      = '\\TRUENAS\dataset1\Backup\Immich'
     VersionKeepCount = 3
     LogfileName      = 'Immich-Backup-Runner.log'
