@@ -95,7 +95,7 @@ function Invoke-CrossPlatformCopy {
 
     if ($IsWindows) {
         # Build robocopy args
-        $roboArgs = @($Source, $Target, '/E', '/COPY:DAT', '/R:3', '/W:5', '/MT:8', '/NP', '/NFL', '/NDL', "/LOG:$robolog")
+        $roboArgs = @($Source, $Target, '/E', '/COPY:DAT', '/R:0', '/W:0', '/MT:8', '/NFL', '/NDL', '/V', '/TEE', "/LOG:$robolog")
         if ($Excludes.Count -gt 0) {
             $roboArgs += '/XD'
             $roboArgs += $Excludes
@@ -104,7 +104,7 @@ function Invoke-CrossPlatformCopy {
         Write-au2matorLog -Type INFO -Text ('Starting robocopy: {0} -> {1}' -f $Source, $Target)
         Write-au2matorLog -Type DEBUG -Text ('robocopy ' + ($roboArgs -join ' '))
 
-        & robocopy.exe @roboArgs
+        Start-Process -FilePath 'robocopy.exe' -ArgumentList $roboArgs -Wait
         $rc = $LASTEXITCODE
 
         # robocopy 0-7 are considered success, >=8 is failure
@@ -258,18 +258,27 @@ if ($PreCheck) {
 
             $BackupDirFiles.Add($Backup, $Files)
     
-            $colItems = ($Files | Measure-Object -Property length -Sum)             
-            # ensure numeric addition (avoid string concat)
-            $SumMB += [int64]($colItems.Sum)
+            $colItems = ($Files | Measure-Object -Property length -Sum)
             $SumItems += $colItems.Count
         }
     
-        $TotalMB = ('{0:N2} MB of Files' -f ($SumMB / 1MB))
-        Write-au2matorLog -Type INFO -Text "There are $SumItems Files with  $TotalMB to copy"
+        $TotalGB = ('{0:N2} GB of Files' -f (($colItems.Sum) / 1GB))
+        Write-au2matorLog -Type INFO -Text "There are $SumItems Files with $TotalGB to copy"
         
         if ($BackupDirFiles.Count -le 0) {
             Write-au2matorLog -Type ERROR -Text 'No valid BackupDirs found, exiting'
             return
+        }
+
+        Write-au2matorLog -Type INFO -Text 'Checking for free space on Destination Drive'
+        $freeSpace = (Get-PSDrive -Name ((Split-Path -Path $Destination -Qualifier)[0])).Free / 1GB
+        if ($freeSpace -lt $(($colItems.Sum) / 1GB)) {
+            Write-au2matorLog -Type ERROR -Text "Not enough free space on destination drive. Only $($freeSpace.ToString('N2')) GB available."
+            $PreCheck = $false
+            return
+        }
+        else {
+            Write-au2matorLog -Type INFO -Text "Free space on destination drive: $($freeSpace.ToString('N2')) GB"
         }
 
         try {
