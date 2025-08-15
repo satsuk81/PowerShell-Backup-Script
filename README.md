@@ -19,5 +19,11 @@ Created         : 2025-08-15
 Modified        : 2025-08-15
 
 ## .EXAMPLE
-
-.\BackupScript.ps1 -SourceDirs 'C:\Data' -Destination '\\server\backup'
+$splat = @{
+    BackupName       = 'Immich'
+    SourceDirs       = @('D:\immich-app\library\library')
+    Destination      = '\\TRUENAS\dataset1\Backup\Immich'
+    VersionKeepCount = 3
+    LogfileName      = 'Immich-Backup-Runner.log'
+}
+.\BackupScript.ps1 @splat

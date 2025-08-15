@@ -1,5 +1,5 @@
 $splat = @{
-    BackupName      = 'Immich'
+    BackupName       = 'Immich'
     SourceDirs       = @('D:\immich-app\library\library')
     #SourceDirs       = @('D:\Projects')
     Destination      = '\\TRUENAS\dataset1\Backup\Immich'
