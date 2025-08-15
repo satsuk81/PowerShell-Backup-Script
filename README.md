@@ -20,4 +20,4 @@ Modified        : 2025-08-15
 
 ## .EXAMPLE
 
-.\BackupScript_v2.ps1 -SourceDirs 'C:\Data' -Destination '\\server\backup'
+.\BackupScript.ps1 -SourceDirs 'C:\Data' -Destination '\\server\backup'
