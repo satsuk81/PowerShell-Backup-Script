@@ -20,7 +20,7 @@ Modified        : 2025-08-15
 
 ## .EXAMPLE
 
-```
+``` powershell
 $splat = @{
     BackupName       = 'Immich'
     SourceDirs       = @('D:\immich-app\library\library')
