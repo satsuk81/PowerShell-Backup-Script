@@ -41,6 +41,7 @@ $LogfileName = "Log" #Log Name
 $LoggingLevel = "3" #LoggingLevel only for Output in Powershell Window, 1=smart, 3=Heavy
 
 $Zip = $false #Zip the Backup Destination
+$ZipFile = "" #Path to the ZIP file (initialized empty)
 $Use7ZIP = $false #7ZIP Module will be installed https://www.powershellgallery.com/packages/7Zip4Powershell/2.0.0
 $UseStaging = $false #only if you use ZIP, than we copy file to Staging, zip it and copy the ZIP to destination, like Staging, and to save NetworkBandwith
 $StagingPath = "C:\temp\_Staging"
@@ -95,19 +96,19 @@ $FinalBackupdirs = @()
 
 #SCRIPT
 ##PRE CHECK
-Write-au2matorLog -Type Info -Text "Start the Script"
-Write-au2matorLog -Type Info -Text "Create Backup Dirs and Check all Folders an Path if they exist"
+Write-au2matorLog -Type INFO -Text "Start the Script"
+Write-au2matorLog -Type INFO -Text "Create Backup Dirs and Check all Folders an Path if they exist"
 
 try {
     #Create Backup Dir
     $BackupDestination = $Destination + "\Backup-" + (Get-Date -format yyyy-MM-dd) + "-" + (Get-Random -Maximum 100000) + "\"
     New-Item -Path $BackupDestination -ItemType Directory | Out-Null
     Start-sleep -Seconds 5
-    Write-au2matorLog -Type Info -Text "Create Backupdir $BackupDestination"
+    Write-au2matorLog -Type INFO -Text "Create Backupdir $BackupDestination"
 
     try {
         #Ceck all Directories
-        Write-au2matorLog -Type Info -Text "Check if BackupDirs exist"
+        Write-au2matorLog -Type INFO -Text "Check if BackupDirs exist"
         foreach ($Dir in $Backupdirs) {
             if ((Test-Path $Dir)) {
                 
@@ -126,27 +127,27 @@ try {
                 }
                 else {
                     Write-au2matorLog -Type ERROR -Text "$StagingPath does not exist"
-                    Write-au2matorLog -Type ERROR -Text $Error
+                    Write-au2matorLog -Type ERROR -Text $_
                     $PreCheck = $false
                 }
             }
         }
         catch {
             Write-au2matorLog -Type ERROR -Text "Failed to Check Staging Dir $StagingPath"
-            Write-au2matorLog -Type ERROR -Text $Error
+            Write-au2matorLog -Type ERROR -Text $_
             $PreCheck = $false
         }
     }
     catch {
         Write-au2matorLog -Type ERROR -Text "Failed to Check Backupdir $BackupDestination"
-        Write-au2matorLog -Type ERROR -Text $Error
+        Write-au2matorLog -Type ERROR -Text $_
         $PreCheck = $false
         
     }
 }
 catch {
     Write-au2matorLog -Type ERROR -Text "Failed to Create Backupdir $BackupDestination"
-    Write-au2matorLog -Type ERROR -Text $Error
+    Write-au2matorLog -Type ERROR -Text $_
     $PreCheck = $false
 }
 
@@ -164,35 +165,32 @@ if ($PreCheck) {
         $SumCount = 0
         $colItems = 0
         $ExcludeString = ""
-        foreach ($Entry in $ExcludeDirs) {
-            #Exclude the directory itself
-            $Temp = "^" + $Entry.Replace("\", "\\").Replace("(", "\(").Replace(")", "\)") + "$"
-
-            #$Temp = $Entry
-            $ExcludeString += $Temp + "|"
-
-            #Exclude the directory's children
-            $Temp = "^" + $Entry.Replace("\", "\\").Replace("(", "\(").Replace(")", "\)") + "\\.*"
-
-            #$Temp = $Entry
-            $ExcludeString += $Temp + "|"
-        }
-        $ExcludeString = $ExcludeString.Substring(0, $ExcludeString.Length - 1)
-        [RegEx]$exclude = $ExcludeString
         
+        # Build array of regex patterns for exclusion
+        $ExcludePatterns = @()
+        foreach ($Entry in $ExcludeDirs) {
+            # Exclude the directory itself
+            $ExcludePatterns += "^" + [regex]::Escape($Entry) + "$"
+            # Exclude the directory's children
+            $ExcludePatterns += "^" + [regex]::Escape($Entry) + "\\.*"
+        }
+
+        # Function to check if a path matches any exclusion pattern
+        function IsExcluded($path, $patterns) {
+            foreach ($pattern in $patterns) {
+                if ($path -match $pattern) { return $true }
+            }
+            return $false
+        }
+
         foreach ($Backup in $FinalBackupdirs) {
-
-            $Files = Get-ChildItem -LiteralPath $Backup -recurse -Attributes D+!ReparsePoint, D+H+!ReparsePoint -ErrorVariable +errItems -ErrorAction SilentlyContinue | 
-            ForEach-Object -Process { Add-Member -InputObject $_ -NotePropertyName "ParentFullName" -NotePropertyValue ($_.FullName.Substring(0, $_.FullName.LastIndexOf("\" + $_.Name))) -PassThru -ErrorAction SilentlyContinue } |
-            Where-Object { $_.FullName -notmatch $exclude -and $_.ParentFullName -notmatch $exclude } |
-            Get-ChildItem -Attributes !D -ErrorVariable +errItems -ErrorAction SilentlyContinue | Where-Object { $_.DirectoryName -notmatch $exclude }
-            #$BackupDirFiles.Add($Backup, $Files)
-
-            $Files+= Get-ChildItem -LiteralPath $Backup  | 
-            ForEach-Object -Process { Add-Member -InputObject $_ -NotePropertyName "ParentFullName" -NotePropertyValue ($_.FullName.Substring(0, $_.FullName.LastIndexOf("\" + $_.Name))) -PassThru -ErrorAction SilentlyContinue } |
-            Get-ChildItem -Attributes !D -ErrorVariable +errItems -ErrorAction SilentlyContinue
+            $Files = Get-ChildItem -LiteralPath $Backup -Recurse -ErrorVariable +errItems -ErrorAction SilentlyContinue |
+                Where-Object {
+                    -not (IsExcluded $_.FullName $ExcludePatterns) -and
+                    -not (IsExcluded $_.DirectoryName $ExcludePatterns)
+                } |
+                Where-Object { -not $_.PSIsContainer }
             $BackupDirFiles.Add($Backup, $Files)
-
     
             $colItems = ($Files | Measure-Object -property length -sum) 
             $Items = 0
@@ -231,7 +229,7 @@ if ($PreCheck) {
                     }
                     catch {
                         $ErrorCount++
-                        Write-au2matorLog -Type Error -Text $("'" + $File.FullName + "' returned an error and was not copied")
+                        Write-au2matorLog -Type ERROR -Text $("'" + $File.FullName + "' returned an error and was not copied")
                     }
                     $Items += (Get-item -LiteralPath $file.fullname).Length
                     $Index = [array]::IndexOf($BackupDirs, $Backup) + 1
@@ -241,22 +239,22 @@ if ($PreCheck) {
             }
             $SumCount += $Count
             $SumTotalMB = "{0:N2}" -f ($Items / 1MB) + " MB of Files"
-            Write-au2matorLog -Type Info -Text "----------------------"
-            Write-au2matorLog -Type Info -Text "Copied $SumCount files with $SumTotalMB"
-            if ($ErrorCount ) { Write-au2matorLog -Type Info -Text "$ErrorCount Files could not be copied" }
+            Write-au2matorLog -Type INFO -Text "----------------------"
+            Write-au2matorLog -Type INFO -Text "Copied $SumCount files with $SumTotalMB"
+            if ($ErrorCount ) { Write-au2matorLog -Type INFO -Text "$ErrorCount Files could not be copied" }
 
             $BackUpCheck = $true
         }
         catch {
             
             Write-au2matorLog -Type ERROR -Text "Failed to Backup"
-            Write-au2matorLog -Type ERROR -Text $Error
+            Write-au2matorLog -Type ERROR -Text $_
             $BackUpCheck = $false
         }
     }
     catch {
         Write-au2matorLog -Type ERROR -Text "Failed to Measure Backupdir"
-        Write-au2matorLog -Type ERROR -Text $Error
+        Write-au2matorLog -Type ERROR -Text $_
         $BackUpCheck = $false
     }
 }
@@ -270,7 +268,7 @@ else {
 if ($BackUpCheck) {
     Write-au2matorLog -Type INFO -Text "BAckUpCheck is fine, so lets se if we need to ZIP"
     
-    if ($ZIP) {
+    if ($Zip) {
         Write-au2matorLog -Type INFO -Text "ZIP is on, so lets go"
 
         if ($Use7ZIP) {
@@ -282,87 +280,79 @@ if ($BackUpCheck) {
                     Write-au2matorLog -Type INFO -Text "7ZIP Module is installed"
                 }
                 else {
-                
                     Write-au2matorLog -Type INFO -Text "7ZIP Module is not installed, try to install"
                     Install-Module -Name 7Zip4Powershell -Force
                     Import-Module 7Zip4Powershell
                 }
 
-                $Zip = $StagingPath + ("\" + $BackupDestination.Replace($Destination, '').Replace('\', '') + ".zip")
+                $ZipFile = $StagingPath + ("\" + $BackupDestination.Replace($Destination, '').Replace('\', '') + ".zip")
                 
-                Write-au2matorLog -Type Info -Text "Compress File"
-                Compress-7Zip -ArchiveFileName $Zip -Path $BackupDestination
+                Write-au2matorLog -Type INFO -Text "Compress File"
+                Compress-7Zip -ArchiveFileName $ZipFile -Path $BackupDestination
                             
-                Write-au2matorLog -Type Info -Text "Move Zip to Destination"
-                Move-Item -Path $Zip -Destination $Destination
+                Write-au2matorLog -Type INFO -Text "Move Zip to Destination"
+                Move-Item -Path $ZipFile -Destination $Destination
 
                 $ZIPCheck = $true
             }
             catch {
                 Write-au2matorLog -Type ERROR -Text "Error on 7ZIP compression"
-                Write-au2matorLog -Type ERROR -Text $Error
+                Write-au2matorLog -Type ERROR -Text $_
                 $ZIPCheck = $false
             }
         }
         else {
-        
+            # Built-in ZIP logic can be added here if needed
+            # Example:
+            # $ZipFile = Join-Path $Destination ("Backup-" + (Get-Date -format yyyy-MM-dd) + ".zip")
+            # Compress-Archive -Path $BackupDestination -DestinationPath $ZipFile -Force
+            # $ZIPCheck = $true
         }
     }
     else {
         Write-au2matorLog -Type INFO -Text "No Zip, so go ahead"
     }
-
-
 }
 else {
     Write-au2matorLog -Type ERROR -Text "BAckUpCheck failed so do not try to ZIP"
 }
-
-
-
-
 
 ##CLEANUP BACKUP
 if ($Zip -and $RemoveBackupDestination -and $ZIPCheck)
 {
     try {
         Write-au2matorLog -Type INFO -Text "Lets remove Backup Dir after ZIP"
-        #Remove-Item -Path $BackupDir -Force -Recurse 
         get-childitem -Path $BackupDestination -recurse -Force | remove-item -Confirm:$false -ErrorAction SilentlyContinue -Recurse 
         get-item -Path $BackupDestination | remove-item -Confirm:$false  -ErrorAction SilentlyContinue -Recurse | Out-Null
 
     }
     catch {
         Write-au2matorLog -Type ERROR -Text "Error to Remove Backup Dir: $BackupDestination"
-        Write-au2matorLog -Type ERROR -Text $Error
+        Write-au2matorLog -Type ERROR -Text $_
         
     }
 }
 
 
 ##CLEANUP VERSION
-Write-au2matorLog -Type Info -Text "Cleanup Backup Dir"
+Write-au2matorLog -Type INFO -Text "Cleanup Backup Dir"
 
-$Count = (Get-ChildItem $Destination | Where-Object { $_.Attributes -eq "Directory" }).count
-if ($count -gt $Versions) {
-    Write-au2matorLog -Type Info -Text "Found $count Backups"
-    $Folder = Get-ChildItem $Destination | Where-Object { $_.Attributes -eq "Directory" } | Sort-Object -Property CreationTime -Descending:$false | Select-Object -First 1
+$Count = (Get-ChildItem $Destination | Where-Object { $_.PSIsContainer }).count
+if ($Count -gt $Versions) {
+    Write-au2matorLog -Type INFO -Text "Found $Count Backups"
+    $Folder = Get-ChildItem $Destination | Where-Object { $_.PSIsContainer } | Sort-Object -Property CreationTime | Select-Object -First 1
 
-    Write-au2matorLog -Type Info -Text "Remove Dir: $Folder"
-    
-    $Folder.FullName | Remove-Item -Recurse -Force 
+    Write-au2matorLog -Type INFO -Text "Remove Dir: $Folder"
+    Remove-Item -Path $Folder.FullName -Recurse -Force
 }
 
 
-$CountZip = (Get-ChildItem $Destination | Where-Object { $_.Attributes -eq "Archive" -and $_.Extension -eq ".zip" }).count
-Write-au2matorLog -Type Info -Text "Check if there are more than $Versions Zip in the Backupdir"
+$CountZip = (Get-ChildItem $Destination | Where-Object { -not $_.PSIsContainer -and $_.Extension -eq ".zip" }).Count
+Write-au2matorLog -Type INFO -Text "Check if there are more than $Versions Zip in the Backupdir"
 
 if ($CountZip -gt $Versions) {
+    $ZipFileToRemove = Get-ChildItem $Destination | Where-Object { -not $_.PSIsContainer -and $_.Extension -eq ".zip" } | Sort-Object -Property CreationTime | Select-Object -First 1
 
-    $Zip = Get-ChildItem $Destination | Where-Object { $_.Attributes -eq "Archive" -and $_.Extension -eq ".zip" } | Sort-Object -Property CreationTime -Descending:$false | Select-Object -First 1
-
-    Write-au2matorLog -Type Info -Text "Remove Zip: $Zip"
-    
-    $Zip.FullName | Remove-Item -Recurse -Force 
-
+    Write-au2matorLog -Type INFO -Text "Remove Zip: $ZipFileToRemove"
+    Remove-Item -Path $ZipFileToRemove.FullName -Force
 }
