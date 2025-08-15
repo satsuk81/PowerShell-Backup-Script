@@ -21,6 +21,9 @@
 
 param(
     [Parameter(Mandatory = $false)]
+    [string[]]$BackupName = @('PowerShellBackupScript'),
+
+    [Parameter(Mandatory = $false)]
     [string[]]$SourceDirs = @('C:\Temp\Source', 'C:\Temp\Source2'),
 
     [Parameter(Mandatory = $false)]
@@ -95,7 +98,8 @@ function Invoke-CrossPlatformCopy {
 
     if ($IsWindows) {
         # Build robocopy args
-        $roboArgs = @($Source, $Target, '/E', '/COPY:DAT', '/R:0', '/W:0', '/MT:8', '/NFL', '/NDL', '/V', '/TEE', "/LOG:$robolog")
+        $roboArgs = @($Source, $Target, '/E', '/COPY:DAT', '/R:0', '/W:0', '/MT:8', '/NFL', '/V', '/TEE', "/LOG:$robolog")
+        #$roboArgs = @($Source, $Target, '/E', '/COPY:DAT', '/R:0', '/W:0', '/MT:8', '/NFL', '/NDL', '/V', '/TEE', "/LOG:$robolog")
         if ($Excludes.Count -gt 0) {
             $roboArgs += '/XD'
             $roboArgs += $Excludes
@@ -160,6 +164,7 @@ $FinalSourceDirs = @()
 #region SCRIPT
 #region PRE CHECK
 Write-au2matorLog -Type INFO -Text 'Start the Script'
+Write-au2matorLog -Type INFO -Text "Backup Name: $BackupName"
 Write-au2matorLog -Type INFO -Text 'Checking all SourceDirs Folders Path to ensure they exist'
 foreach ($Dir in $SourceDirs) {
     if ((Test-Path $Dir)) {
@@ -184,7 +189,7 @@ if ($PreCheck) {
     try {
         #Create Backup Dir
         Write-au2matorLog -Type INFO -Text 'Create Backup Dirs'
-        $BackupDestination = Join-Path -Path $Destination -ChildPath ('Backup-' + (Get-Date -Format yyyy-MM-ddTHH.mm.ss))
+        $BackupDestination = Join-Path -Path $Destination -ChildPath ("$BackupName-" + (Get-Date -Format yyyy-MM-ddTHH.mm.ss))
         New-Item -Path $BackupDestination -ItemType Directory -Force | Out-Null
         Write-au2matorLog -Type INFO -Text "Create Backupdir $BackupDestination"
     }
@@ -271,14 +276,22 @@ if ($PreCheck) {
         }
 
         Write-au2matorLog -Type INFO -Text 'Checking for free space on Destination Drive'
-        $freeSpace = (Get-PSDrive -Name ((Split-Path -Path $Destination -Qualifier)[0])).Free / 1GB
-        if ($freeSpace -lt $(($colItems.Sum) / 1GB)) {
-            Write-au2matorLog -Type ERROR -Text "Not enough free space on destination drive. Only $($freeSpace.ToString('N2')) GB available."
-            $PreCheck = $false
-            return
-        }
-        else {
+        try {
+            $freeSpace = (Get-PSDrive -Name ((Split-Path -Path $Destination -Qualifier -ErrorAction SilentlyContinue)[0])).Free / 1GB
             Write-au2matorLog -Type INFO -Text "Free space on destination drive: $($freeSpace.ToString('N2')) GB"
+            if ($freeSpace -lt $(($colItems.Sum) / 1GB)) {
+                Write-au2matorLog -Type ERROR -Text "Not enough free space on destination drive. Only $($freeSpace.ToString('N2')) GB available."
+                $PreCheck = $false
+                return
+            }
+            else {
+                Write-au2matorLog -Type INFO -Text "Free space on destination drive: $($freeSpace.ToString('N2')) GB"
+            }
+        }
+        catch {
+            Write-au2matorLog -Type ERROR -Text 'Failed to get free space on destination drive'
+            Write-au2matorLog -Type WARNING -Text 'Proceeding with backup, but this may fail due to insufficient space.'
+            #Write-au2matorLog -Type ERROR -Text $_
         }
 
         try {
