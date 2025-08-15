@@ -21,7 +21,7 @@
 
 param(
     [Parameter(Mandatory = $false)]
-    [string[]]$BackupName = @('PowerShellBackupScript'),
+    [string]$BackupName = 'PowerShellBackupScript',
 
     [Parameter(Mandatory = $false)]
     [string[]]$SourceDirs = @('C:\Temp\Source', 'C:\Temp\Source2'),
@@ -102,7 +102,7 @@ function Invoke-CrossPlatformCopy {
             $Source, 
             $Target, 
             '/E', 
-            '/PURGE'
+            '/PURGE',
             '/COPY:DAT',
             '/R:0',
             '/W:0',
@@ -239,7 +239,8 @@ if ($PreCheck) {
             }
             return $false
         }
-
+        $dirsToInclude = @()
+        $dirsToExclude = @()
         foreach ($Backup in $FinalSourceDirs) {
             $Files = Get-ChildItem -LiteralPath $Backup -Recurse -ErrorAction SilentlyContinue |
             Where-Object {
@@ -251,7 +252,6 @@ if ($PreCheck) {
                 Write-au2matorLog -Type WARNING -Text "$Backup has no valid files"
                 #continue
             }
-            $dirsToInclude = @()
             $dirsToInclude += $Backup
             $dirsToInclude += Get-ChildItem -LiteralPath $Backup -Recurse -ErrorAction SilentlyContinue | 
             Where-Object {
@@ -263,7 +263,7 @@ if ($PreCheck) {
             #Write-Host 'Folders to include:'
             #$dirsToInclude | Format-Table
 
-            $dirsToExclude = @()
+
             #$dirsToExclude += $Backup
             $dirsToExclude += Get-ChildItem -LiteralPath $Backup -Recurse -ErrorAction SilentlyContinue | 
             Where-Object {
@@ -294,7 +294,7 @@ if ($PreCheck) {
         try {
             $freeSpace = (Get-PSDrive -Name ((Split-Path -Path $Destination -Qualifier -ErrorAction SilentlyContinue)[0])).Free / 1GB
             Write-au2matorLog -Type INFO -Text "Free space on destination drive: $($freeSpace.ToString('N2')) GB"
-            if ($freeSpace -lt $(($colItems.Sum) / 1GB)) {
+            if ($freeSpace -lt ($SumMB / 1GB)) {
                 Write-au2matorLog -Type ERROR -Text "Not enough free space on destination drive. Only $($freeSpace.ToString('N2')) GB available."
                 $PreCheck = $false
                 return
