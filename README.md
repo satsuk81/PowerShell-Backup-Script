@@ -8,18 +8,19 @@ PowerShell Cross Platform Backup Script
 
 This script provides a cross-platform backup solution using PowerShell.
 
-Based on the PowerShell-Backup-Script by Michael Seidl
+Based on the PowerShell-Backup-Script by Michael Seidl\
 [https://github.com/Seidlm/PowerShell-Backup-Script](https://github.com/Seidlm/PowerShell-Backup-Script)
 
 ## .NOTES
 
-Written by      : Daniel Ames
-Build Version   : v1
-Created         : 2025-08-15
+Written by      : Daniel Ames\
+Build Version   : v1\
+Created         : 2025-08-15\
 Modified        : 2025-08-15
 
 ## .EXAMPLE
 
+```
 $splat = @{
     BackupName       = 'Immich'
     SourceDirs       = @('D:\immich-app\library\library')
@@ -28,3 +29,4 @@ $splat = @{
     LogfileName      = 'Immich-Backup-Runner.log'
 }
 .\BackupScript.ps1 @splat
+```
