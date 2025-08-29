@@ -27,6 +27,7 @@
 #[CmdletBinding(DefaultParameterSetName = 'RestoreSet')]
 #[CmdletBinding(DefaultParameterSetName = 'CopySet')]
 
+#mark PARAMETERS
 param(
     [Parameter(ParameterSetName = 'BackupSet')][Switch]$Backup,
     [Parameter(ParameterSetName = 'RestoreSet')][Switch]$Restore,
@@ -484,13 +485,13 @@ Write-Host "ParamSet: $($PSCmdlet.ParameterSetName)"
 Write-Log -Type INFO -Text 'Start the Script'
 switch ($PSCmdlet.ParameterSetName) {
     'BackupSet' {
-        $result = Invoke-PreCheck -SourceDirs $SourceDirs -Target $Target
+        $result = Invoke-PreCheck -SourceDirs $SourceDirs -Target $Destination
         if ($result) {
             Write-Log -Type WARNING -Text 'PreCheck successful, starting SourceAnalyse'
             $sourceResults = Invoke-SourceAnalyse -SourceDirs $FinalSourceDirs -ExcludeDirs $ExcludeDirs
             if ($sourceResults) {
                 Write-Log -Type WARNING -Text 'SourceAnalyse successful, starting Copy'
-                Invoke-Backup -BackupDirFiles $sourceResults -Target $Target
+                Invoke-Backup -BackupDirFiles $sourceResults -Target $Destination
             }
         }
         else {
