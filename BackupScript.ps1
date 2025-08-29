@@ -336,7 +336,7 @@ function Invoke-SourceAnalyse {
     )
 
     [int]$TotalFileCount = 0
-    [int]$TotalSizeSum = 0
+    [int]$TotalSizeSumGB = 0
     Write-Log -Type INFO -Text 'Analyzing SourceDirs for Files and Sizes'
     foreach ($Dir in $SourceDirs) {
         if ((Test-Path $Dir)) {
@@ -344,14 +344,14 @@ function Invoke-SourceAnalyse {
             $FileCount = $Files.Count
             $TotalFileCount += $FileCount
             $TotalSize = ($Files | Measure-Object -Property Length -Sum).Sum
-            $TotalSizeSum += $TotalSize
+            $TotalSizeSumGB += $TotalSize / 1GB
             Write-Log -Type INFO -Text "Found $FileCount files in $Dir with total size $([Math]::Round($TotalSize / 1GB, 2)) GB"
         }
         else {
             Write-Log -Type WARNING -Text "$Dir does not exist"
         }
     }
-    Write-Log -Type INFO -Text "Totals Found: $TotalFileCount files, size $([Math]::Round($TotalSizeSum / 1GB, 2)) GB"
+    Write-Log -Type INFO -Text "Totals Found: $TotalFileCount files, size $([Math]::Round($TotalSizeSumGB, 2)) GB"
 
     $BackupDirFiles = @{}                   # Hash of BackupDir & Files 
     $global:dirsToInclude = @()
@@ -484,7 +484,7 @@ Write-Host "ParamSet: $($PSCmdlet.ParameterSetName)"
 Write-Log -Type INFO -Text 'Start the Script'
 switch ($PSCmdlet.ParameterSetName) {
     'BackupSet' {
-        $result = Invoke-PreCheck -SourceDirs @($Source) -Target $Target
+        $result = Invoke-PreCheck -SourceDirs $SourceDirs -Target $Target
         if ($result) {
             Write-Log -Type WARNING -Text 'PreCheck successful, starting SourceAnalyse'
             $sourceResults = Invoke-SourceAnalyse -SourceDirs $FinalSourceDirs -ExcludeDirs $ExcludeDirs
