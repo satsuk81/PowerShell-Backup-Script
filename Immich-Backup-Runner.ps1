@@ -11,11 +11,13 @@ if (!(Test-Path -Path $destinationFolder)) {
     exit
 }
 
-Copy-Item -Path "$immichappFolder\*" -Include '.env', 'docker-compose.yml', 'immich-config.json' -Destination $destinationFolder -Force -Verbose
+#Copy-Item -Path "$immichappFolder\*" -Include '.env', 'docker-compose.yml', 'immich-config.json' -Destination $destinationFolder -Force -Verbose
+Get-ChildItem -Path "$immichappFolder" -File | Copy-Item -Destination $destinationFolder -Force -Verbose
 
 $splat = @{
     BackupName       = 'Immich'
     SourceDirs       = @(
+        "$immichappFolder\config",
         "$immichappFolder\library\backups",
         "$immichappFolder\library\library",
         "$immichappFolder\library\profile",
