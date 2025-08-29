@@ -211,7 +211,7 @@ function Invoke-Backup {
     Write-Log -Type INFO -Text "Backup Name: $BackupName"
     try {
         Write-Log -Type INFO -Text 'Create Backup Dirs'
-        #$BackupDestination = Join-Path -Path $Destination -ChildPath ("$BackupName-" + (Get-Date -Format yyyy-MM-ddTHH.mm.ss))
+        #$BackupDestination = Join-Path -Path $Target -ChildPath ("$BackupName-" + (Get-Date -Format yyyy-MM-ddTHH.mm.ss))
         $BackupDestination = Join-Path -Path $Target -ChildPath ("$BackupName-" + (Get-Date -Format yyyy-MM-dd))
         New-Item -Path $BackupDestination -ItemType Directory -Force | Out-Null
         Write-Log -Type INFO -Text "Create Backupdir $BackupDestination"
@@ -252,10 +252,10 @@ function Invoke-Backup {
 
     #region CLEANUP VERSION
     Write-Log -Type INFO -Text 'Cleanup Backup Dir'
-    $Count = (Get-ChildItem $Destination | Where-Object { $_.PSIsContainer }).count
+    $Count = (Get-ChildItem $Target | Where-Object { $_.PSIsContainer }).count
     if ($Count -gt $VersionKeepCount) {
         Write-Log -Type INFO -Text "Found $Count Backups"
-        $Folder = Get-ChildItem $Destination | Where-Object { $_.PSIsContainer } | Sort-Object -Property CreationTime | Select-Object -First 1
+        $Folder = Get-ChildItem $Target | Where-Object { $_.PSIsContainer } | Sort-Object -Property CreationTime | Select-Object -First 1
         Write-Log -Type INFO -Text "Remove Dir: $Folder"
         Remove-Item -Path $Folder.FullName -Recurse -Force
     }
