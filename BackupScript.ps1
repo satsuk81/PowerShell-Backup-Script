@@ -305,10 +305,10 @@ function Invoke-Copy {
         foreach ($Backup in $BackupDirFiles.Keys) {
             Write-Log -Type INFO -Text "Processing : $($Backup)"
             #Write-Log -Type INFO -Text "Files : $($BackupDirFiles.$Backup)"
-            $folderName = Split-Path -Path $Backup -Leaf
-            $targetName = Join-Path $Target $folderName
+            #$folderName = Split-Path -Path $Backup -Leaf
+            #$targetName = Join-Path $Target $folderName
 
-            $result = Invoke-CrossPlatformCopy -Source $Backup -Target $targetName -Excludes $global:dirsToExclude -PerSourceLogPath $logPath
+            $result = Invoke-CrossPlatformCopy -Source $Backup -Target $Target -Excludes $global:dirsToExclude -PerSourceLogPath $logPath
             if (-not $result.Ok) {
                 Write-Log -Type ERROR -Text $("Backup failed for $Backup (code $($result.ExitCode))") 
                 Write-Log -Type ERROR -Text $("Log: $($result.Log)")
@@ -360,11 +360,12 @@ function Invoke-SourceAnalyse {
     $ExcludePatterns = @()                  # Build array of regex patterns for exclusion
     foreach ($Entry in $ExcludeDirs) {
         # Exclude the directory itself
-        $ExcludePatterns += '^' + [regex]::Escape($Entry) + '$'
+        #$ExcludePatterns += '^' + [regex]::Escape($Entry) + '$'
+        $ExcludePatterns += [regex]::Escape($Entry) + '$'
         # Exclude the directory's children
-        $ExcludePatterns += '^' + [regex]::Escape($Entry) + '\\.*'
+        #$ExcludePatterns += '^' + [regex]::Escape($Entry) + '\\.*'
         # Exclude folders matching the pattern
-        $ExcludePatterns += [regex]::Escape($Entry)
+        #$ExcludePatterns += [regex]::Escape($Entry)
     }
     $ExcludePatterns | ForEach-Object { Write-Log -Type DEBUG -Text "Exclude pattern: $_" }
 
@@ -379,7 +380,7 @@ function Invoke-SourceAnalyse {
     }
  
     foreach ($Backup in $SourceDirs) {
-        $Files = Get-ChildItem -LiteralPath $Backup -Recurse -ErrorAction SilentlyContinue |
+        <#$Files = Get-ChildItem -LiteralPath $Backup -Recurse -ErrorAction SilentlyContinue |
         Where-Object {
             -not (IsExcluded $_.FullName $ExcludePatterns) -and
             -not (IsExcluded $_.DirectoryName $ExcludePatterns)
@@ -388,9 +389,9 @@ function Invoke-SourceAnalyse {
         if (!$Files) {
             Write-Log -Type WARNING -Text "$Backup has no valid files"
             #continue
-        }
-        $dirsToInclude += $Backup
-        $global:dirsToInclude += Get-ChildItem -LiteralPath $Backup -Recurse -ErrorAction SilentlyContinue | 
+        }#>
+        #$dirsToInclude += $Backup
+        $global:dirsToInclude += Get-ChildItem -Directory -LiteralPath $Backup -Recurse -ErrorAction SilentlyContinue | 
         Where-Object {
             -not (IsExcluded $_.FullName $ExcludePatterns) -and
             -not (IsExcluded $_.DirectoryName $ExcludePatterns)
@@ -398,7 +399,7 @@ function Invoke-SourceAnalyse {
         Where-Object { $_.PSIsContainer } |
         Select-Object -ExpandProperty FullName
 
-        $global:dirsToExclude += Get-ChildItem -LiteralPath $Backup -Recurse -ErrorAction SilentlyContinue | 
+        $global:dirsToExclude += Get-ChildItem -Directory -LiteralPath $Backup -Recurse -ErrorAction SilentlyContinue | 
         Where-Object {
             (IsExcluded $_.FullName $ExcludePatterns) -or
             (IsExcluded $_.DirectoryName $ExcludePatterns)
@@ -412,8 +413,12 @@ function Invoke-SourceAnalyse {
         Write-Log -Type ERROR -Text 'No valid BackupDirs found, exiting'
         return
     }
-    $dirsToInclude | ForEach-Object { Write-Log -Type DEBUG -Text "Dirs to include: $_" }
-    $dirsToExclude | ForEach-Object { Write-Log -Type DEBUG -Text "Dirs to exclude: $_" }
+    if ($dirsToInclude.Count -lt 100) {
+        $dirsToInclude | ForEach-Object { Write-Log -Type DEBUG -Text "Dirs to include: $_" }
+    }
+    if ($dirsToExclude.Count -lt 100) {
+        $dirsToExclude | ForEach-Object { Write-Log -Type DEBUG -Text "Dirs to exclude: $_" }
+    }
     return $BackupDirFiles
 }
 
@@ -465,7 +470,7 @@ function Invoke-PreCheck {
         Write-Log -Type ERROR -Text 'Failed to get free space on destination drive'
         Write-Log -Type WARNING -Text 'Proceeding with backup, but this may fail due to insufficient space.'
         #Write-Log -Type ERROR -Text $_
-        $PreCheck = $false
+        $PreCheck = $true
     }
     return $PreCheck
 }
