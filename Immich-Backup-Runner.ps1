@@ -50,8 +50,8 @@ if (!(Test-Path -Path $destinationFolder)) {
 }
 
 $splat = @{
-    SourceDirs       = "$immichappFolder"
-    Destination      = "$destinationFolder"
+    Source           = "$immichappFolder"
+    Target           = "$destinationFolder"
     LogfileName      = 'Immich-CopyTo-Truenas-Docker-Runner.log'
 }
 
