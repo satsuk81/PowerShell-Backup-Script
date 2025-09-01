@@ -1,3 +1,4 @@
+function Backup-Windows {
 $immichappFolder = "D:\immich-app"
 $destinationFolder = "\\TRUENAS\dataset1\Backup\Immich"
 
@@ -31,7 +32,36 @@ $splat = @{
 }
 
 Set-Location $PSScriptRoot
-.\BackupScript.ps1 @splat
+.\BackupScript.ps1 @splat -Backup
+}
+
+function Copy-Backup {
+$immichappFolder = "\\TRUENAS\dataset1\Backup\Immich"
+$destinationFolder = "\\TRUENAS\apps\immich-app"
+
+if (!(Test-Path -Path $immichappFolder)) {
+    Write-Host "Immich-app folder not found. Exiting script."
+    exit
+}
+
+if (!(Test-Path -Path $destinationFolder)) {
+    Write-Host "Destination folder not found. Exiting script."
+    exit
+}
+
+$splat = @{
+    SourceDirs       = "$immichappFolder"
+    Destination      = "$destinationFolder"
+    LogfileName      = 'Immich-CopyTo-Truenas-Docker-Runner.log'
+}
+
+Set-Location $PSScriptRoot
+.\BackupScript.ps1 @splat -Copy
+
+}
+
+#Backup-Windows
+Copy-Backup
 exit
 
 #$dbDump = & (docker exec -t immich_postgres pg_dumpall --clean --if-exists --username=postgres)
