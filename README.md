@@ -35,7 +35,7 @@ $splat = @{
     VersionKeepCount = 3
     LogfileName      = 'Immich-Backup-Runner.log'
 }
-.\BackupScript.ps1 @splat
+.\BackupScript.ps1 @splat -Backup
 ```
 
 ### Example 2
@@ -51,9 +51,9 @@ $splat = @{
 ## .SYNTAX
 
 ``` powershell
-    C:\Git\GitHub\PowerShell-Backup-Script\BackupScript.ps1 [-Backup ] [-BackupName <String>] [-SourceDirs <String[]>] [-Destination <String>] [-VersionKeepCount <Int32>] [-ExcludeDirs <String[]>] [-logPath <String>] [-LogfileName <String>] [-CodeDebug <Boolean>] [<CommonParameters>]
+.\BackupScript.ps1 [-Backup ] [-BackupName <String>] [-SourceDirs <String[]>] [-Destination <String>] [-VersionKeepCount <Int32>] [-ExcludeDirs <String[]>] [-logPath <String>] [-LogfileName <String>] [-CodeDebug <Boolean>] [<CommonParameters>]
 
-    C:\Git\GitHub\PowerShell-Backup-Script\BackupScript.ps1 [-Restore ] [-SourceDirs <String[]>] [-Destination <String>] [-logPath <String>] [-LogfileName <String>] [-CodeDebug <Boolean>] [<CommonParameters>]
+.\BackupScript.ps1 [-Restore ] [-SourceDirs <String[]>] [-Destination <String>] [-logPath <String>] [-LogfileName <String>] [-CodeDebug <Boolean>] [<CommonParameters>]
 
-    C:\Git\GitHub\PowerShell-Backup-Script\BackupScript.ps1 [-Copy ] [-ExcludeDirs <String[]>] [-logPath <String>] [-LogfileName <String>] [-Source <String>] [-Target <String>] [-CodeDebug <Boolean>] [<CommonParameters>]
+.\BackupScript.ps1 [-Copy ] [-ExcludeDirs <String[]>] [-logPath <String>] [-LogfileName <String>] [-Source <String>] [-Target <String>] [-CodeDebug <Boolean>] [<CommonParameters>]
 ```
