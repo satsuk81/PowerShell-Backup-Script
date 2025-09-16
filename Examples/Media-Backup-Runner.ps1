@@ -1,3 +1,5 @@
+Set-Location $PSScriptRoot\..
+
 function Backup-Media {
     $immichappFolder = "D:\immich-app"
     $destinationFolder = "\\TRUENAS\dataset1\Backup\Immich"
@@ -37,7 +39,6 @@ function Backup-Media {
         LogfileName      = 'Immich-Backup-Runner.log'
     }
 
-    Set-Location $PSScriptRoot
     .\BackupScript.ps1 @splat -Backup
 }
 
@@ -64,7 +65,6 @@ function Copy-Files {
         LogfileName = 'Media-CopyTo-TrueNAS-Backup-Runner.log'
     }
 
-    Set-Location $PSScriptRoot
     .\BackupScript.ps1 @splat -Copy
 
 }
@@ -74,3 +74,5 @@ Copy-Files -SourceFolder "D:\Media\Backup" -DestinationFolder "\\truenas\dataset
 Copy-Files -SourceFolder "D:\Media\Photos" -DestinationFolder "\\truenas\dataset3\Backup\Photos"
 Copy-Files -SourceFolder "\\TRUENAS\dataset2\olddisk\media\Pictures" -DestinationFolder "\\TRUENAS\dataset3\backup\Photos"
 exit
+
+Get-Help .\BackupScript.ps1 -ShowWindow

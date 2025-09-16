@@ -14,11 +14,13 @@ Based on the PowerShell-Backup-Script by Michael Seidl\
 ## .NOTES
 
 Written by      : Daniel Ames\
-Build Version   : v1\
+Build Version   : v1.2.0\
 Created         : 2025-08-15\
-Modified        : 2025-08-15
+Modified        : 2025-09-16
 
-## .EXAMPLE
+## .EXAMPLES
+
+### Example 1
 
 ``` powershell
 $splat = @{
@@ -34,4 +36,24 @@ $splat = @{
     LogfileName      = 'Immich-Backup-Runner.log'
 }
 .\BackupScript.ps1 @splat
+```
+
+### Example 2
+
+``` powershell
+$splat = @{
+    Source      = "$sourceFolder"
+    Target      = "$destinationFolder"
+}
+.\BackupScript.ps1 @splat -Copy
+```
+
+## .SYNTAX
+
+``` powershell
+    C:\Git\GitHub\PowerShell-Backup-Script\BackupScript.ps1 [-Backup ] [-BackupName <String>] [-SourceDirs <String[]>] [-Destination <String>] [-VersionKeepCount <Int32>] [-ExcludeDirs <String[]>] [-logPath <String>] [-LogfileName <String>] [-CodeDebug <Boolean>] [<CommonParameters>]
+
+    C:\Git\GitHub\PowerShell-Backup-Script\BackupScript.ps1 [-Restore ] [-SourceDirs <String[]>] [-Destination <String>] [-logPath <String>] [-LogfileName <String>] [-CodeDebug <Boolean>] [<CommonParameters>]
+
+    C:\Git\GitHub\PowerShell-Backup-Script\BackupScript.ps1 [-Copy ] [-ExcludeDirs <String[]>] [-logPath <String>] [-LogfileName <String>] [-Source <String>] [-Target <String>] [-CodeDebug <Boolean>] [<CommonParameters>]
 ```

@@ -10,13 +10,14 @@
 
 .NOTES
     Written by      : Daniel Ames
-    Build Version   : v1.1.0
+    Build Version   : v1.2.0
     Created         : 2025-08-15
-    Updated         : 2025-08-15
+    Updated         : 2025-09-16
 
     Version history:
-    1.0.0 - (2025-08-15) Initial v1 release
+    1.2.0 - (2025-09-16) improved logic and performance
     1.1.0 - (2025-08-29) Added Copy function, large code overhaul, improved logging.
+    1.0.0 - (2025-08-15) Initial v1 release
 
 .EXAMPLE
     .\BackupScript.ps1 -SourceDirs 'C:\Data' -Destination '\\server\backup'
