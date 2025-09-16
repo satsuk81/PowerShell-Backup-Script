@@ -136,13 +136,13 @@ function Invoke-CrossPlatformCopy {
             $Source, 
             $Target, 
             '/E', 
-            '/PURGE',
+            #'/PURGE',
             '/COPY:DAT',
             '/R:0',
             '/W:0',
             '/MT:8',
-            '/NFL',
-            '/V',
+            #'/NFL',
+            #'/V',
             '/TEE',
             "/LOG:$robolog"
         )
