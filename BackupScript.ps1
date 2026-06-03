@@ -10,11 +10,12 @@
 
 .NOTES
     Written by      : Daniel Ames
-    Build Version   : v1.2.0
+    Build Version   : v1.3.0
     Created         : 2025-08-15
-    Updated         : 2025-09-16
+    Updated         : 2026-06-03
 
     Version history:
+    1.3.0 - (2026-06-03) Added PostCheck step, removed global variables, fixed Windows PowerShell 5.1 compatibility, improved backup version cleanup loop
     1.2.0 - (2025-09-16) improved logic and performance
     1.1.0 - (2025-08-29) Added Copy function, large code overhaul, improved logging.
     1.0.0 - (2025-08-15) Initial v1 release
@@ -82,26 +83,14 @@ function Write-Log {
         [string]$Text
     )
        
-    # Set logging path
-    if (!(Test-Path -Path $logPath)) {
-        try {
-            $null = New-Item -Path $logPath -ItemType Directory
-            Write-Verbose ('Path: "{0}" was created.' -f $logPath)
-        }
-        catch {
-            Write-Verbose ("Path: ""{0}"" couldn't be created." -f $logPath)
-        }
-    }
-    else {
-        Write-Verbose ('Path: "{0}" already exists.' -f $logPath)
-    }
     [string]$logFile = '{0}\{1}_{2}.log' -f $logPath, $LogfileName, $(Get-Date -Format yyyy-MM-dd)
     $logEntry = '{0}: <{1}> <{2}> {3}' -f $(Get-Date -Format yyyy-MM-ddTHH.mm.ss), $Type, $PID, $Text
     
     try { Add-Content -Path $logFile -Value $logEntry }
     catch {
         Start-Sleep -Milliseconds 50
-        Add-Content -Path $logFile -Value $logEntry
+        try { Add-Content -Path $logFile -Value $logEntry }
+        catch { Write-Verbose "Failed to write log entry: $_" }
     }
     switch ($Type) {
         'DEBUG' {
@@ -131,7 +120,7 @@ function Invoke-CrossPlatformCopy {
     $robolog = Join-Path $PerSourceLogPath ('{0}_robocopy_{1}_{2}.log' -f $LogfileName, $folderName, (Get-Date -Format 'yyyy-MM-ddTHH.mm.ss'))
     $rsynclog = Join-Path $PerSourceLogPath ('{0}_rsync_{1}_{2}.log' -f $LogfileName, $folderName, (Get-Date -Format 'yyyy-MM-ddTHH.mm.ss'))
 
-    if ($IsWindows) {
+    if ($PSVersionTable.PSEdition -ne 'Core' -or $IsWindows) {
         # Build robocopy args
         $roboArgs = @(
             $Source, 
@@ -156,8 +145,8 @@ function Invoke-CrossPlatformCopy {
         Write-Log -Type INFO -Text ('Starting robocopy: {0} -> {1}' -f $Source, $Target)
         #Write-Log -Type DEBUG -Text ('robocopy ' + ($roboArgs -join ' '))
 
-        Start-Process -FilePath 'robocopy.exe' -ArgumentList $roboArgs -Wait
-        $rc = $LASTEXITCODE
+        $proc = Start-Process -FilePath 'robocopy.exe' -ArgumentList $roboArgs -Wait -PassThru
+        $rc = $proc.ExitCode
 
         # robocopy 0-7 are considered success, >=8 is failure
         $ok = ($rc -lt 8)
@@ -203,11 +192,13 @@ function Invoke-CrossPlatformCopy {
 function Invoke-Backup {
     param(
         [Parameter(Mandatory)][hashtable]$BackupDirFiles,
-        [Parameter(Mandatory)][string]$Target
+        [Parameter(Mandatory)][string]$Target,
+        [string[]]$DirsToExclude = @()
     )
 
     # Initialize counters and flags
     [int]$ErrorCount = 0
+    [bool]$BackUpCheck = $false
 
     Write-Log -Type INFO -Text "Backup Name: $BackupName"
     try {
@@ -227,11 +218,11 @@ function Invoke-Backup {
         Write-Log -Type INFO -Text 'Run Backup (robocopy/rsync wrapper)'
         foreach ($Backup in $BackupDirFiles.Keys) {
             Write-Log -Type INFO -Text "Processing : $($Backup)"
-            #Write-Log -Type INFO -Text "Files : $($BackupDirFiles.$Backup)"
+            Write-Log -Type INFO -Text "Files : $($BackupDirFiles.$Backup)"
             $folderName = Split-Path -Path $Backup -Leaf
             $targetName = Join-Path $BackupDestination $folderName
 
-            $result = Invoke-CrossPlatformCopy -Source $Backup -Target $targetName -Excludes $global:dirsToExclude -PerSourceLogPath $logPath
+            $result = Invoke-CrossPlatformCopy -Source $Backup -Target $targetName -Excludes $DirsToExclude -PerSourceLogPath $logPath
             if (-not $result.Ok) {
                 Write-Log -Type ERROR -Text $("Backup failed for $Backup (code $($result.ExitCode))") 
                 Write-Log -Type ERROR -Text $("Log: $($result.Log)")
@@ -253,10 +244,10 @@ function Invoke-Backup {
 
     #region CLEANUP VERSION
     Write-Log -Type INFO -Text 'Cleanup Backup Dir'
-    $Count = (Get-ChildItem $Target | Where-Object { $_.PSIsContainer }).count
-    if ($Count -gt $VersionKeepCount) {
-        Write-Log -Type INFO -Text "Found $Count Backups"
-        $Folder = Get-ChildItem $Target | Where-Object { $_.PSIsContainer } | Sort-Object -Property CreationTime | Select-Object -First 1
+    while ((Get-ChildItem $Target | Where-Object { $_.PSIsContainer }).Count -gt $VersionKeepCount) {
+        $Count = (Get-ChildItem $Target | Where-Object { $_.PSIsContainer }).Count
+        Write-Log -Type INFO -Text "Found $Count Backups (limit $VersionKeepCount), removing oldest"
+        $Folder = Get-ChildItem $Target | Where-Object { $_.PSIsContainer } | Sort-Object -Property Name | Select-Object -First 1
         Write-Log -Type INFO -Text "Remove Dir: $Folder"
         Remove-Item -Path $Folder.FullName -Recurse -Force
     }
@@ -298,33 +289,36 @@ function Invoke-Restore {
 function Invoke-Copy {
     param(
         [Parameter(Mandatory)][hashtable]$BackupDirFiles,
-        [Parameter(Mandatory)][string]$Target
+        [Parameter(Mandatory)][string]$Target,
+        [string[]]$DirsToExclude = @()
     )
 
+    [int]$ErrorCount = 0
+    [bool]$BackUpCheck = $false
     try {
-        Write-Log -Type INFO -Text 'Run Backup (robocopy/rsync wrapper)'
+        Write-Log -Type INFO -Text 'Run Copy (robocopy/rsync wrapper)'
         foreach ($Backup in $BackupDirFiles.Keys) {
             Write-Log -Type INFO -Text "Processing : $($Backup)"
             #Write-Log -Type INFO -Text "Files : $($BackupDirFiles.$Backup)"
             #$folderName = Split-Path -Path $Backup -Leaf
             #$targetName = Join-Path $Target $folderName
 
-            $result = Invoke-CrossPlatformCopy -Source $Backup -Target $Target -Excludes $global:dirsToExclude -PerSourceLogPath $logPath
+            $result = Invoke-CrossPlatformCopy -Source $Backup -Target $Target -Excludes $DirsToExclude -PerSourceLogPath $logPath
             if (-not $result.Ok) {
-                Write-Log -Type ERROR -Text $("Backup failed for $Backup (code $($result.ExitCode))") 
+                Write-Log -Type ERROR -Text $("Copy failed for $Backup (code $($result.ExitCode))") 
                 Write-Log -Type ERROR -Text $("Log: $($result.Log)")
                 $ErrorCount++
                 $BackUpCheck = $false
             }
             else {
-                Write-Log -Type INFO -Text $("Backup succeeded for $Backup (code $($result.ExitCode))")
+                Write-Log -Type INFO -Text $("Copy succeeded for $Backup (code $($result.ExitCode))")
                 Write-Log -Type INFO -Text $("Log: $($result.Log)")
                 $BackUpCheck = $true
             }
         }
     }
     catch {
-        Write-Log -Type ERROR -Text 'Failed to Backup'
+        Write-Log -Type ERROR -Text 'Failed to Copy'
         Write-Log -Type ERROR -Text $_
         $BackUpCheck = $false
     }
@@ -337,38 +331,23 @@ function Invoke-SourceAnalyse {
         [Parameter(Mandatory)][string[]]$ExcludeDirs
     )
 
-    [int]$TotalFileCount = 0
-    [int]$TotalSizeSumGB = 0
-    Write-Log -Type INFO -Text 'Analyzing SourceDirs for Files and Sizes'
-    foreach ($Dir in $SourceDirs) {
-        if ((Test-Path $Dir)) {
-            $Files = Get-ChildItem -Path $Dir -Recurse -File -ErrorAction SilentlyContinue
-            $FileCount = $Files.Count
-            $TotalFileCount += $FileCount
-            $TotalSize = ($Files | Measure-Object -Property Length -Sum).Sum
-            $TotalSizeSumGB += $TotalSize / 1GB
-            Write-Log -Type INFO -Text "Found $FileCount files in $Dir with total size $([Math]::Round($TotalSize / 1GB, 2)) GB"
-        }
-        else {
-            Write-Log -Type WARNING -Text "$Dir does not exist"
-        }
-    }
-    Write-Log -Type INFO -Text "Totals Found: $TotalFileCount files, size $([Math]::Round($TotalSizeSumGB, 2)) GB"
+    [int]$totalFileCount = 0
+    [double]$totalSizeGB = 0
 
-    $BackupDirFiles = @{}                   # Hash of BackupDir & Files 
-    $global:dirsToInclude = @()
-    $global:dirsToExclude = @()
-    $ExcludePatterns = @()                  # Build array of regex patterns for exclusion
+    $backupDirFiles = @{}                   # Hash of BackupDir & Files 
+    $dirsToInclude = @()
+    $dirsToExclude = @()
+    $excludePatterns = @()                  # Build array of regex patterns for exclusion
     foreach ($Entry in $ExcludeDirs) {
         # Exclude the directory itself
-        #$ExcludePatterns += '^' + [regex]::Escape($Entry) + '$'
-        $ExcludePatterns += [regex]::Escape($Entry) + '$'
+        #$excludePatterns += '^' + [regex]::Escape($Entry) + '$'
+        $excludePatterns += [regex]::Escape($Entry) + '$'
         # Exclude the directory's children
-        #$ExcludePatterns += '^' + [regex]::Escape($Entry) + '\\.*'
+        #$excludePatterns += '^' + [regex]::Escape($Entry) + '\\.*'
         # Exclude folders matching the pattern
-        #$ExcludePatterns += [regex]::Escape($Entry)
+        #$excludePatterns += [regex]::Escape($Entry)
     }
-    $ExcludePatterns | ForEach-Object { Write-Log -Type DEBUG -Text "Exclude pattern: $_" }
+    $excludePatterns | ForEach-Object { Write-Log -Type DEBUG -Text "Exclude pattern: $_" }
 
     # Function to check if a path matches any exclusion pattern
     function IsExcluded($path, $patterns) {
@@ -380,37 +359,47 @@ function Invoke-SourceAnalyse {
         return $false
     }
  
+    Write-Log -Type INFO -Text 'Analyzing SourceDirs for Files and Sizes'
     foreach ($Backup in $SourceDirs) {
-        <#$Files = Get-ChildItem -LiteralPath $Backup -Recurse -ErrorAction SilentlyContinue |
+        if (-not (Test-Path $Backup)) {
+            Write-Log -Type WARNING -Text "$Backup does not exist"
+            continue
+        }
+        $allItems = Get-ChildItem -LiteralPath $Backup -Recurse -ErrorAction SilentlyContinue
+        <#$files = $files |
         Where-Object {
-            -not (IsExcluded $_.FullName $ExcludePatterns) -and
-            -not (IsExcluded $_.DirectoryName $ExcludePatterns)
+            -not (IsExcluded $_.FullName $excludePatterns) -and
+            -not (IsExcluded $_.DirectoryName $excludePatterns)
         } |            
         Where-Object { -not $_.PSIsContainer }
-        if (!$Files) {
+        if (!$files) {
             Write-Log -Type WARNING -Text "$Backup has no valid files"
             #continue
         }#>
-        #$dirsToInclude += $Backup
-        $global:dirsToInclude += Get-ChildItem -Directory -LiteralPath $Backup -Recurse -ErrorAction SilentlyContinue | 
-        Where-Object {
-            -not (IsExcluded $_.FullName $ExcludePatterns) -and
-            -not (IsExcluded $_.DirectoryName $ExcludePatterns)
-        } |
-        Where-Object { $_.PSIsContainer } |
-        Select-Object -ExpandProperty FullName
+        # Count files and sizes for logging
+        $fileItems = $allItems | Where-Object { -not $_.PSIsContainer }
+        $fileCount = $fileItems.Count
+        $totalFileCount += $fileCount
+        $totalSize = ($fileItems | Measure-Object -Property Length -Sum).Sum
+        $totalSizeGB += $totalSize / 1GB
+        Write-Log -Type INFO -Text "Found $fileCount files in $Backup with total size $([Math]::Round($totalSize / 1GB, 2)) GB"
 
-        $global:dirsToExclude += Get-ChildItem -Directory -LiteralPath $Backup -Recurse -ErrorAction SilentlyContinue | 
-        Where-Object {
-            (IsExcluded $_.FullName $ExcludePatterns) -or
-            (IsExcluded $_.DirectoryName $ExcludePatterns)
-        } |
-        Where-Object { $_.PSIsContainer } |
-        Select-Object -ExpandProperty FullName
+        # Build include/exclude dir lists from the same scan
+        $dirItems = $allItems | Where-Object { $_.PSIsContainer }
+        $dirsToInclude += $dirItems | Where-Object {
+            -not (IsExcluded $_.FullName $excludePatterns) -and
+            -not (IsExcluded $_.DirectoryName $excludePatterns)
+        } | Select-Object -ExpandProperty FullName
 
-        $BackupDirFiles.Add($Backup, $Files)
+        $dirsToExclude += $dirItems | Where-Object {
+            (IsExcluded $_.FullName $excludePatterns) -or
+            (IsExcluded $_.DirectoryName $excludePatterns)
+        } | Select-Object -ExpandProperty FullName
+
+        $backupDirFiles.Add($Backup, $allItems)
     }
-    if ($BackupDirFiles.Count -le 0) {
+    Write-Log -Type INFO -Text "Totals Found: $totalFileCount files, size $([Math]::Round($totalSizeGB, 2)) GB"
+    if ($backupDirFiles.Count -le 0) {
         Write-Log -Type ERROR -Text 'No valid BackupDirs found, exiting'
         return
     }
@@ -420,7 +409,13 @@ function Invoke-SourceAnalyse {
     if ($dirsToExclude.Count -lt 100) {
         $dirsToExclude | ForEach-Object { Write-Log -Type DEBUG -Text "Dirs to exclude: $_" }
     }
-    return $BackupDirFiles
+    #return $backupDirFiles
+    return [pscustomobject]@{
+        BackupDirFiles  = $backupDirFiles
+        TotalSizeGB     = $totalSizeGB
+        DirsToInclude   = $dirsToInclude
+        DirsToExclude   = $dirsToExclude
+    }
 }
 
 function Invoke-PreCheck {
@@ -430,17 +425,25 @@ function Invoke-PreCheck {
     )
 
     $PreCheck = $true
+    $finalSourceDirs = @()
+    [double]$totalSizeGB = 0
+    [double]$freeSpaceGB = 0
     Write-Log -Type INFO -Text 'Checking all SourceDirs Folders Path to ensure they exist'
+
     foreach ($Dir in $SourceDirs) {
         if ((Test-Path $Dir)) {          
             Write-Log -Type INFO -Text "$Dir is fine"
-            $global:FinalSourceDirs += $Dir
+            $finalSourceDirs += $Dir
+            $files = Get-ChildItem -Path $Dir -Recurse -File -ErrorAction SilentlyContinue
+            $totalSize = ($files | Measure-Object -Property Length -Sum).Sum
+            $totalSizeGB += $totalSize / 1GB
         }
         else {
             Write-Log -Type WARNING -Text "$Dir does not exist and was removed from Backup"
         }
     }
-    if ($FinalSourceDirs.Count -le 0) {
+
+    if ($finalSourceDirs.Count -le 0) {
         Write-Log -Type ERROR -Text 'No valid SourceDirs found, exiting'
         $PreCheck = $false
     }
@@ -456,15 +459,14 @@ function Invoke-PreCheck {
         }
     }
 
-    Write-Log -Type INFO -Text 'Checking for free space on Destination Drive'
     try {
-        $freeSpace = (Get-PSDrive -Name ((Split-Path -Path $Target -Qualifier -ErrorAction SilentlyContinue)[0])).Free / 1GB
-        if ($freeSpace -lt ($SumMB / 1GB)) {
-            Write-Log -Type ERROR -Text "Not enough free space on destination drive. Only $($freeSpace.ToString('N2')) GB available."
+        $freeSpaceGB = (Get-PSDrive -Name ((Split-Path -Path $Target -Qualifier -ErrorAction SilentlyContinue)[0])).Free / 1GB
+        if ($totalSizeGB -gt 0 -and $freeSpaceGB -lt $totalSizeGB) {
+            Write-Log -Type ERROR -Text "Not enough free space on destination drive. Need $($totalSizeGB.ToString('N2')) GB but only $($freeSpaceGB.ToString('N2')) GB available."
             $PreCheck = $false
         }
         else {
-            Write-Log -Type INFO -Text "Free space on destination drive: $($freeSpace.ToString('N2')) GB"
+            Write-Log -Type INFO -Text "Free space on destination drive: $($freeSpaceGB.ToString('N2')) GB"
         }
     }
     catch {
@@ -473,14 +475,63 @@ function Invoke-PreCheck {
         #Write-Log -Type ERROR -Text $_
         $PreCheck = $true
     }
-    return $PreCheck
+    
+    return [pscustomobject]@{
+        PreCheck    = $PreCheck
+        FreeSpaceGB = $freeSpaceGB
+        TotalSizeGB = $totalSizeGB
+        FinalSourceDirs = $finalSourceDirs
+    }
+}
+
+function Invoke-PostCheck {
+    param(
+        [Parameter(Mandatory)][string]$Target,
+        [double]$TotalSizeGB
+    )
+
+    $PostCheck = $true
+    [double]$freeSpaceGB = 0
+    Write-Log -Type INFO -Text "Updated Total Size from SourceAnalyse: $($TotalSizeGB.ToString('N2')) GB"
+    Write-Log -Type INFO -Text 'Checking for free space on Destination Drive'
+    try {
+        $freeSpaceGB = (Get-PSDrive -Name ((Split-Path -Path $Target -Qualifier -ErrorAction SilentlyContinue)[0])).Free / 1GB
+        if ($TotalSizeGB -gt 0 -and $freeSpaceGB -lt $TotalSizeGB) {
+            Write-Log -Type ERROR -Text "Not enough free space on destination drive. Need $($TotalSizeGB.ToString('N2')) GB but only $($freeSpaceGB.ToString('N2')) GB available."
+            $PostCheck = $false
+        }
+        else {
+            Write-Log -Type INFO -Text "Free space on destination drive: $($freeSpaceGB.ToString('N2')) GB"
+        }
+    }
+    catch {
+        Write-Log -Type ERROR -Text 'Failed to get free space on destination drive'
+        Write-Log -Type WARNING -Text 'Proceeding with backup, but this may fail due to insufficient space.'
+        #Write-Log -Type ERROR -Text $_
+        $PostCheck = $true
+    }
+    
+    return [pscustomobject]@{
+        PostCheck = $PostCheck
+    }
 }
 #endregion
 
 #region SCRIPT
-$global:FinalSourceDirs = @()
+#$global:FinalSourceDirs = @()
 
 Set-Location $PSScriptRoot
+
+# One-time log directory initialisation
+if (-not (Test-Path -Path $logPath)) {
+    try {
+        $null = New-Item -Path $logPath -ItemType Directory
+        Write-Verbose ('Path: "{0}" was created.' -f $logPath)
+    }
+    catch {
+        Write-Warning ("Path: ""{0}"" couldn't be created. Logging may fail." -f $logPath)
+    }
+}
 (Get-Variable -Scope:'Local' -Include:@($MyInvocation.MyCommand.Parameters.keys) | `
     Format-Table -AutoSize `
 @{ Label = 'Name'; Expression = { "$($_.Name)" }; }, `
@@ -492,12 +543,17 @@ Write-Log -Type INFO -Text 'Start the Script'
 switch ($PSCmdlet.ParameterSetName) {
     'BackupSet' {
         $result = Invoke-PreCheck -SourceDirs $SourceDirs -Target $Destination
-        if ($result) {
+        if ($result.PreCheck) {
             Write-Log -Type WARNING -Text 'PreCheck successful, starting SourceAnalyse'
+            $FinalSourceDirs = $result.FinalSourceDirs
             $sourceResults = Invoke-SourceAnalyse -SourceDirs $FinalSourceDirs -ExcludeDirs $ExcludeDirs
             if ($sourceResults) {
-                Write-Log -Type WARNING -Text 'SourceAnalyse successful, starting Copy'
-                Invoke-Backup -BackupDirFiles $sourceResults -Target $Destination
+                Write-Log -Type WARNING -Text 'SourceAnalyse successful, starting PostCheck'
+                $postCheckResults = Invoke-PostCheck -Target $Destination -TotalSizeGB $sourceResults.TotalSizeGB
+                if ($postCheckResults.PostCheck) {
+                    Write-Log -Type WARNING -Text 'PostCheck successful, starting Backup'
+                    Invoke-Backup -BackupDirFiles $sourceResults.BackupDirFiles -Target $Destination -DirsToExclude $sourceResults.DirsToExclude
+                }
             }
         }
         else {
@@ -510,12 +566,17 @@ switch ($PSCmdlet.ParameterSetName) {
     }
     'CopySet' {
         $result = Invoke-PreCheck -SourceDirs @($Source) -Target $Target
-        if ($result) {
+        if ($result.PreCheck) {
             Write-Log -Type WARNING -Text 'PreCheck successful, starting SourceAnalyse'
+            $FinalSourceDirs = $result.FinalSourceDirs
             $sourceResults = Invoke-SourceAnalyse -SourceDirs $FinalSourceDirs -ExcludeDirs $ExcludeDirs
             if ($sourceResults) {
-                Write-Log -Type WARNING -Text 'SourceAnalyse successful, starting Copy'
-                Invoke-Copy -BackupDirFiles $sourceResults -Target $Target
+                Write-Log -Type WARNING -Text 'SourceAnalyse successful, starting PostCheck'
+                $postCheckResults = Invoke-PostCheck -Target $Target -TotalSizeGB $sourceResults.TotalSizeGB
+                if ($postCheckResults.PostCheck) {
+                    Write-Log -Type WARNING -Text 'PostCheck successful, starting Copy'
+                    Invoke-Copy -BackupDirFiles $sourceResults.BackupDirFiles -Target $Target -DirsToExclude $sourceResults.DirsToExclude
+                }
             }
         }
         else {
